@@ -1,0 +1,41 @@
+{
+  "name": "koishi-plugin-lollipop-clock",
+  "description": "A Koishi plugin for scheduled reminders",
+  "version": "1.0.1",
+  "main": "index.js",
+  "contributors": [
+    "FtyLollipop <ftylollipop@outlook.com>"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/FtyLollipop/koishi-plugin-lollipop-clock",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FtyLollipop/koishi-plugin-lollipop-clock.git"
+  },
+  "scripts": {},
+  "keywords": [
+    "chatbot",
+    "koishi",
+    "plugin",
+    "clock"
+  ],
+  "peerDependencies": {
+    "koishi": "^4.18.7"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.20",
+    "node-schedule": "^2.1.1"
+  },
+  "koishi": {
+    "description": {
+      "en": "A plugin for scheduled reminders",
+      "zh": "定时提醒插件"
+    },
+    "service": {
+      "required": [
+        "database"
+      ]
+    },
+    "preview": true
+  }
+}
