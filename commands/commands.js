@@ -11,7 +11,8 @@ const { parseCountdownTextToDate } = require("../utils/time");
 function registerCommands() {
   // 创建提醒
   store.ctx
-    .command("clock <time:string> <message:string> [...recipients:text]")
+    .command("clock <time:string> <message:string> [...recipients:text]", '新增定时提醒（倒计时）')
+    .usage('time 时间，message 提醒消息，recipients 提醒人，手动at或QQ号；空格隔开；不填默认是自己')
     .action(async (argv, time, message, recipients) => {
       const privateMsg = isPrivateMessage(argv.session.event.channel.id);
       const taskTime = parseCountdownTextToDate(time);
@@ -125,7 +126,9 @@ function registerCommands() {
     });
 
   // 查看提醒列表
-  store.ctx.command("clock.list").action(async (argv) => {
+  store.ctx.command("clock.list", "列出当前会话下自己的所有定时提醒")
+  .usage('按提醒时间正序排序，前面数字是ID，可用于取消定时提醒')
+  .action(async (argv) => {
     const privateMsg = isPrivateMessage(argv.session.event.channel.id);
 
     const tasks = await store.scheduleManager.getTasks(
@@ -153,13 +156,15 @@ function registerCommands() {
           return `[${id} ${member ? member.user.name : "未知"}]`;
         })
         .join(",")}\n\n` :
-        `⭐[${task.id}] ${task.time} 内容: ${task.message}`;
+        `⭐[${task.id}] ${task.time} 内容: ${task.message}\n\n`;
     });
     replyMessage(argv.session, msg);
   });
 
   // 取消提醒
-  store.ctx.command("clock.cancel <id:number>").action(async (argv, id) => {
+  store.ctx.command("clock.cancel <id:number>", "取消一个定时")
+  .usage('id 定时提醒的ID，可从提醒列表中查看')
+  .action(async (argv, id) => {
     const task = store.scheduleManager.getTaskById(id);
     if (!task) {
       replyMessage(argv.session, "未找到该定时提醒");
@@ -174,7 +179,9 @@ function registerCommands() {
   });
 
   // 取消所有提醒
-  store.ctx.command("clock.clear").action(async (argv) => {
+  store.ctx.command("clock.clear", "清除所有定时提醒")
+  .usage('只会清除当前会话的定时提醒')
+  .action(async (argv) => {
     const tasks = await store.scheduleManager.getTasks(
       argv.session.event.platform,
       argv.session.event.channel.id,
