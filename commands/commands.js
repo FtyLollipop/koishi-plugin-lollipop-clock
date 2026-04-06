@@ -5,20 +5,23 @@ const {
   replyMessage,
   parseRecipients,
 } = require("../utils/message");
-const { getGuildMemberList } = require("../utils/guild");
+const { getGuildMemberList, getMembersByUserIds } = require("../utils/guild");
 const { parseCountdownTextToDate } = require("../utils/time");
 
 function registerCommands() {
   // 创建提醒
   store.ctx
-    .command("clock <time:string> <message:string> [...recipients:text]", '新增定时提醒（倒计时）')
-    .usage('time 时间，message 提醒消息，recipients 提醒人，手动at或QQ号；空格隔开；不填默认是自己')
+    .command(
+      "clock <time:string> <message:string> [...recipients:text]",
+      "新增定时提醒（倒计时）",
+    )
+    .usage(
+      "time 时间，message 提醒消息，recipients 提醒人，手动at或QQ号；空格隔开；不填默认是自己",
+    )
     .action(async (argv, time, message, recipients) => {
       const privateMsg = isPrivateMessage(argv.session.event.channel.id);
       const taskTime = parseCountdownTextToDate(time);
-      let taskRecipients = recipients
-        ? parseRecipients(recipients)
-        : [argv.session.event.user.id];
+      let taskRecipients;
 
       if (taskTime === null) {
         replyMessage(
@@ -33,14 +36,14 @@ function registerCommands() {
         return;
       }
 
-      let guildMembers;
+      let guildRecipients;
 
       // 如果是群聊，处理提醒人参数
       if (!privateMsg) {
-        guildMembers = await getGuildMemberList(
-          argv.session.event.platform,
-          argv.session.event.channel.id,
-        );
+        // 提取提醒人ID
+        taskRecipients = recipients
+          ? parseRecipients(recipients)
+          : [argv.session.event.user.id];
 
         if (taskRecipients === null) {
           replyMessage(
@@ -54,23 +57,16 @@ function registerCommands() {
         taskRecipients = Array.from(new Set(taskRecipients));
 
         // 验证提醒人是否在群聊中
-        let recipientsCheckPassed = true;
-        taskRecipients.forEach((recipient) => {
-          if (
-            !guildMembers.data ||
-            !guildMembers.data.some(
-              (member) => member.user.id === recipient,
-            )
-          ) {
-            replyMessage(
-              argv.session,
-              `提醒人[QQ:${recipient}]不在当前群聊中，请检查后重新设置`,
-            );
-            recipientsCheckPassed = false;
-          }
-        });
-        if (!recipientsCheckPassed) {
-          return;
+        guildRecipients = await getMembersByUserIds(
+          argv.session.event.platform,
+          argv.session.event.channel.id,
+          taskRecipients,
+        );
+        if (guildRecipients.nonMembers.length > 0) {
+          return replyMessage(
+            argv.session,
+            `提醒人[QQ:${guildRecipients.nonMembers[0]}]不在当前群聊中，请检查后重新设置`,
+          );
         }
       }
 
@@ -102,7 +98,7 @@ function registerCommands() {
         }
       }
 
-      store.scheduleManager.addTask({
+      const task = await store.scheduleManager.addTask({
         platform: argv.session.event.platform,
         channelId: argv.session.event.channel.id,
         userId: argv.session.event.user.id,
@@ -112,90 +108,206 @@ function registerCommands() {
       });
       replyMessage(
         argv.session,
-        !privateMsg
-          ? `⏰定时设置成功，${dayjs(taskTime).format("YYYY-MM-DD HH:mm:ss")}将会提醒${taskRecipients.map(
-              (id) => {
-                const member = guildMembers.data?.find(
-                  (m) => m.user.id === id,
-                );
-                return `[${id} ${member ? member.user.name : "未知"}]`;
-              },
-            )}。`
-          : `⏰定时设置成功，${dayjs(taskTime).format("YYYY-MM-DD HH:mm:ss")}将会提醒你`,
+        `⏰定时设置成功，[${task.id}] ${dayjs(taskTime).format("YYYY-MM-DD HH:mm:ss")}将会提醒${
+          privateMsg
+            ? "你"
+            : guildRecipients.members
+                .map((m) => {
+                  return `[${m.user.id} ${m.user?.name ?? "未知"}]`;
+                })
+                .join(",")
+        }`,
       );
     });
 
   // 查看提醒列表
-  store.ctx.command("clock.list", "列出当前会话下自己的所有定时提醒")
-  .usage('按提醒时间正序排序，前面数字是ID，可用于取消定时提醒')
-  .action(async (argv) => {
-    const privateMsg = isPrivateMessage(argv.session.event.channel.id);
+  store.ctx
+    .command("clock.list", "列出当前会话下自己的所有定时提醒")
+    .option(
+      "scope",
+      "-s [scope] 查看列表范围，可选值为：self自己；all当前会话下全部；QQ号；手动at",
+      { type: "string", fallback: "self" },
+    ) // 允许self all QQ号 手动at
+    .usage("按提醒时间正序排序，前面数字是ID，可用于取消定时提醒")
+    .action(async (argv) => {
+      const privateMsg = isPrivateMessage(argv.session.event.channel.id);
 
-    const tasks = await store.scheduleManager.getTasks(
-      argv.session.event.platform,
-      argv.session.event.channel.id,
-      argv.session.event.user.id,
-    );
-    if (tasks.length === 0) {
-      replyMessage(argv.session, "你没有设置任何定时提醒");
-      return;
-    }
-    let guildMembers;
-    if (!privateMsg) {
-      guildMembers = await getGuildMemberList(
+      let listScope = 'self';
+      let guildMembers;
+      // 如果是群聊
+      if (!privateMsg) {
+        // 解析列表范围选项参数
+        if (argv.options.scope === "self" || argv.options.scope === "all") {
+          listScope = argv.options.scope;
+        } else {
+          listScope = parseRecipients(argv.options.scope);
+          if (!listScope) {
+            replyMessage(
+              argv.session,
+              "参数格式错误，列表范围应该只包含self；all；手动at或QQ号",
+            );
+            return;
+          } else {
+            listScope =
+              listScope[0] === argv.session.event.user.id
+                ? "self"
+                : listScope[0];
+          }
+        }
+        if (!store.config.allowQueryAll && listScope && listScope !== "self") {
+          replyMessage(argv.session, "插件设置不允许查询其他用户定时提醒列表");
+          return;
+        }
+
+        guildMembers = await getGuildMemberList(
+          argv.session.event.platform,
+          argv.session.event.channel.id,
+        );
+      }
+
+      const tasks = await store.scheduleManager.getTasks(
         argv.session.event.platform,
         argv.session.event.channel.id,
+        listScope === 'all' ? undefined :
+        listScope === 'self' ? argv.session.event.user.id :
+        listScope
       );
-    }
-    let msg = "你设置的定时提醒有：\n";
-    tasks.sort((a, b) => a.time.localeCompare(b.time));
-    tasks.forEach((task) => {
-      msg += !privateMsg ? `⭐[${task.id}] ${task.time} 内容: ${task.message} 提醒人: ${task.recipients
-        .map((id) => {
-          const member = guildMembers.data?.find((m) => m.user.id === id);
-          return `[${id} ${member ? member.user.name : "未知"}]`;
-        })
-        .join(",")}\n\n` :
-        `⭐[${task.id}] ${task.time} 内容: ${task.message}\n\n`;
+      if (tasks.length === 0) {
+        replyMessage(
+          argv.session,
+          `${
+            listScope === "self"
+              ? "你"
+              : listScope === "all"
+                ? "当前会话"
+                : `[${listScope} ${guildMembers.filter((m) => m.user.id === listScope)?.[0].user.name ?? "未知"}]`
+          }没有设置任何定时提醒`,
+        );
+        return;
+      }
+      let msg = `${
+        listScope === "self"
+          ? "你"
+          : listScope === "all"
+            ? "当前会话"
+            : `[${listScope} ${guildMembers.filter((m) => m.user.id === listScope)?.[0].user.name ?? "未知"}]`
+      }设置的定时提醒有：\n`;
+      tasks.sort((a, b) => a.time.localeCompare(b.time));
+      tasks.forEach((task) => {
+        msg += `⭐[${task.id}] ${task.time} 内容: ${task.message}${
+          privateMsg
+            ? ""
+            : " 提醒人: " +
+              task.recipients
+                .map((id) => {
+                  const member = guildMembers?.find((m) => m.user.id === id);
+                  return `[${id} ${member ? member.user.name : "未知"}]`;
+                })
+                .join(",")
+        }\n\n`;
+      });
+      replyMessage(argv.session, msg);
     });
-    replyMessage(argv.session, msg);
-  });
+
+  // 订阅提醒
+  store.ctx
+    .command(
+      "clock.subscribe <id:number>",
+      "订阅一个定时提醒（将自己加入提醒人列表中）",
+    )
+    .usage("id 定时提醒的ID，可从提醒列表中查看")
+    .action(async (argv, id) => {
+      if (isPrivateMessage(argv.session.event.channel.id)) return;
+      const task = store.scheduleManager.getTaskById(id);
+      if (!task) {
+        replyMessage(argv.session, "未找到该定时提醒");
+        return;
+      }
+      if (
+        task.platform !== argv.session.event.platform ||
+        task.channelId !== argv.session.event.channel.id
+      ) {
+        replyMessage(argv.session, "未找到该定时提醒");
+        return;
+      }
+      if (!store.config.allowSubscribeOthers && task.userId !== argv.session.event.user.id) {
+          replyMessage(argv.session, "插件设置不允许订阅其他用户定时提醒");
+          return;
+        }
+      if (task.recipients.includes(argv.session.event.user.id)) {
+        replyMessage(argv.session, "你已经存在于该定时提醒的提醒人列表中");
+        return;
+      }
+      store.scheduleManager.subscribeTask(id, argv.session.event.user.id);
+      replyMessage(argv.session, "定时提醒订阅成功");
+    });
+
+  // 取消订阅提醒
+  store.ctx
+    .command(
+      "clock.unsubscribe <id:number>",
+      "取消订阅一个定时提醒（将自己从提醒人列表中移除）",
+    )
+    .usage("id 定时提醒的ID，可从提醒列表中查看")
+    .action(async (argv, id) => {
+      if (isPrivateMessage(argv.session.event.channel.id)) return;
+      const task = store.scheduleManager.getTaskById(id);
+      if (!task) {
+        replyMessage(argv.session, "未找到该定时提醒");
+        return;
+      }
+      if (
+        task.platform !== argv.session.event.platform ||
+        task.channelId !== argv.session.event.channel.id
+      ) {
+        replyMessage(argv.session, "未找到该定时提醒");
+        return;
+      }
+      if (!task.recipients.includes(argv.session.event.user.id)) {
+        replyMessage(argv.session, "你不在该定时提醒的提醒人列表中");
+        return;
+      }
+      store.scheduleManager.unsubscribeTask(id, argv.session.event.user.id);
+      replyMessage(argv.session, "定时提醒取消订阅成功");
+    });
 
   // 取消提醒
-  store.ctx.command("clock.cancel <id:number>", "取消一个定时")
-  .usage('id 定时提醒的ID，可从提醒列表中查看')
-  .action(async (argv, id) => {
-    const task = store.scheduleManager.getTaskById(id);
-    if (!task) {
-      replyMessage(argv.session, "未找到该定时提醒");
-      return;
-    }
-    if (task.userId !== argv.session.event.user.id) {
-      replyMessage(argv.session, "你没有权限取消该定时提醒");
-      return;
-    }
-    store.scheduleManager.removeTask(id);
-    replyMessage(argv.session, "定时提醒取消成功");
-  });
+  store.ctx
+    .command("clock.cancel <id:number>", "取消一个定时")
+    .usage("id 定时提醒的ID，可从提醒列表中查看")
+    .action(async (argv, id) => {
+      const task = store.scheduleManager.getTaskById(id);
+      if (!task) {
+        replyMessage(argv.session, "未找到该定时提醒");
+        return;
+      }
+      if (task.userId !== argv.session.event.user.id) {
+        replyMessage(argv.session, "你没有权限取消该定时提醒");
+        return;
+      }
+      store.scheduleManager.removeTask(id);
+      replyMessage(argv.session, "定时提醒取消成功");
+    });
 
   // 取消所有提醒
-  store.ctx.command("clock.clear", "清除所有定时提醒")
-  .usage('只会清除当前会话的定时提醒')
-  .action(async (argv) => {
-    const tasks = await store.scheduleManager.getTasks(
-      argv.session.event.platform,
-      argv.session.event.channel.id,
-      argv.session.event.user.id,
-    );
-    if (tasks.length === 0) {
-      replyMessage(argv.session, "你没有设置任何定时提醒");
-      return;
-    }
-    tasks.forEach((task) => {
-      store.scheduleManager.removeTask(task.id);
+  store.ctx
+    .command("clock.clear", "清除所有定时提醒")
+    .usage("只会清除当前会话的定时提醒")
+    .action(async (argv) => {
+      const tasks = await store.scheduleManager.getTasks(
+        argv.session.event.platform,
+        argv.session.event.channel.id,
+        argv.session.event.user.id,
+      );
+      if (tasks.length === 0) {
+        replyMessage(argv.session, "你没有设置任何定时提醒");
+        return;
+      }
+      tasks.forEach((task) => {
+        store.scheduleManager.removeTask(task.id);
+      });
+      replyMessage(argv.session, "所有定时提醒已清除");
     });
-    replyMessage(argv.session, "所有定时提醒已清除");
-  });
 }
 
 module.exports = { registerCommands };

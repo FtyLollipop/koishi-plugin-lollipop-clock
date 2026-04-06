@@ -49,6 +49,14 @@ class Database {
     });
   }
 
+  updateTask({ id, platform, channelId, userId, time, message, recipients }) {
+    return this.#ctx.database.set(
+      TABLE_NAME,
+      { id },
+      { platform, channelId, userId, time, message, recipients },
+    );
+  }
+
   deleteTaskById(id) {
     return this.#ctx.database.remove(TABLE_NAME, id);
   }

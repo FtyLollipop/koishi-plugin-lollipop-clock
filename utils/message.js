@@ -84,7 +84,7 @@ function replyMessage(session, message) {
   session.send(`<quote id="${session.event.message.id}"/>${message}`);
 }
 
-// 解析recipients参数，提取出纯数字id列表
+// 解析recipients参数，提取出纯数字id列表，若字符串不合法则返回null
 function parseRecipients(recipients) {
   if (recipients) {
     // 验证recipients是否只包含at标签、基础id和空格

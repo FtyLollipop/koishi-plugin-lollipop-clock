@@ -66,6 +66,23 @@ class ScheduleManager {
     task.id = savedTask.id;
     this.#tasks.set(savedTask.id, task);
     task.start();
+    return task;
+  }
+
+  async subscribeTask(taskId, userId) {
+    const task = this.getTaskById(taskId)
+    task.stop()
+    task.recipients.push(userId)
+    await this.#db.updateTask(task)
+    task.start()
+  }
+
+  async unsubscribeTask(taskId, userId) {
+    const task = this.getTaskById(taskId)
+    task.stop()
+    task.recipients = task.recipients.filter(id => id !== userId)
+    await this.#db.updateTask(task)
+    task.start()
   }
 
   removeTask(taskId) {
