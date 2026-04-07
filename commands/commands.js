@@ -1,3 +1,4 @@
+const { h } = require("koishi");
 const dayjs = require("dayjs");
 const store = require("../store/store");
 const {
@@ -103,7 +104,7 @@ function registerCommands() {
         channelId: argv.session.event.channel.id,
         userId: argv.session.event.user.id,
         time: dayjs(taskTime).format("YYYY-MM-DD HH:mm:ss"),
-        message,
+        message: h.escape(message),
         recipients: taskRecipients,
       });
       replyMessage(
@@ -122,14 +123,9 @@ function registerCommands() {
 
   // 查看提醒列表
   store.ctx
-    .command("clock.list", "列出当前会话下自己的所有定时提醒")
-    .option(
-      "scope",
-      "-s [scope] 查看列表范围，可选值为：self自己；all当前会话下全部；QQ号；手动at",
-      { type: "string", fallback: "self" },
-    ) // 允许self all QQ号 手动at
-    .usage("按提醒时间正序排序，前面数字是ID，可用于取消定时提醒")
-    .action(async (argv) => {
+    .command("clock.list [scope:string]", "提醒时间升序列出当前会话下自己的所有定时提醒")
+    .usage("查看列表范围，可选值为：self自己；all当前会话下全部；QQ号；手动at")
+    .action(async (argv, scope) => {
       const privateMsg = isPrivateMessage(argv.session.event.channel.id);
 
       let listScope = 'self';
@@ -137,10 +133,10 @@ function registerCommands() {
       // 如果是群聊
       if (!privateMsg) {
         // 解析列表范围选项参数
-        if (argv.options.scope === "self" || argv.options.scope === "all") {
-          listScope = argv.options.scope;
+        if (scope === "self" || scope === "all") {
+          listScope = scope;
         } else {
-          listScope = parseRecipients(argv.options.scope);
+          listScope = parseRecipients(scope);
           if (!listScope) {
             replyMessage(
               argv.session,
