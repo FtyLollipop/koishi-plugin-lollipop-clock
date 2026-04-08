@@ -123,17 +123,22 @@ function registerCommands() {
 
   // 查看提醒列表
   store.ctx
-    .command("clock.list [scope:string]", "提醒时间升序列出当前会话下自己的所有定时提醒")
+    .command(
+      "clock.list [scope:string]",
+      "提醒时间升序列出当前会话下自己的所有定时提醒",
+    )
     .usage("查看列表范围，可选值为：self自己；all当前会话下全部；QQ号；手动at")
     .action(async (argv, scope) => {
       const privateMsg = isPrivateMessage(argv.session.event.channel.id);
 
-      let listScope = 'self';
+      let listScope = "self";
       let guildMembers;
       // 如果是群聊
       if (!privateMsg) {
         // 解析列表范围选项参数
-        if (scope === "self" || scope === "all") {
+        if (!scope) {
+          listScope = "self";
+        } else if (scope === "self" || scope === "all") {
           listScope = scope;
         } else {
           listScope = parseRecipients(scope);
@@ -164,9 +169,11 @@ function registerCommands() {
       const tasks = await store.scheduleManager.getTasks(
         argv.session.event.platform,
         argv.session.event.channel.id,
-        listScope === 'all' ? undefined :
-        listScope === 'self' ? argv.session.event.user.id :
-        listScope
+        listScope === "all"
+          ? undefined
+          : listScope === "self"
+            ? argv.session.event.user.id
+            : listScope,
       );
       if (tasks.length === 0) {
         replyMessage(
@@ -226,10 +233,13 @@ function registerCommands() {
         replyMessage(argv.session, "未找到该定时提醒");
         return;
       }
-      if (!store.config.allowSubscribeOthers && task.userId !== argv.session.event.user.id) {
-          replyMessage(argv.session, "插件设置不允许订阅其他用户定时提醒");
-          return;
-        }
+      if (
+        !store.config.allowSubscribeOthers &&
+        task.userId !== argv.session.event.user.id
+      ) {
+        replyMessage(argv.session, "插件设置不允许订阅其他用户定时提醒");
+        return;
+      }
       if (task.recipients.includes(argv.session.event.user.id)) {
         replyMessage(argv.session, "你已经存在于该定时提醒的提醒人列表中");
         return;
