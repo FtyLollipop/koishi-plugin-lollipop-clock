@@ -6,8 +6,6 @@ class Database {
   constructor(ctx) {
     this.#ctx = ctx;
 
-    // ctx.database.drop(TABLE_NAME);
-
     ctx.model.extend(
       TABLE_NAME,
       {
@@ -58,7 +56,12 @@ class Database {
   }
 
   deleteTaskById(id) {
-    return this.#ctx.database.remove(TABLE_NAME, id);
+    try {
+      return this.#ctx.database.remove(TABLE_NAME, { id });
+    } catch (error) {
+      this.#ctx.logger.error("删除任务失败:\n", error);
+      return false;
+    }
   }
 
   deleteTasks(platform, channelId, userId) {
@@ -73,7 +76,7 @@ class Database {
       this.#ctx.database.remove(TABLE_NAME, query);
       return true;
     } catch (error) {
-      console.error("删除任务失败:\n", error);
+      this.#ctx.logger.error("删除任务失败:\n", error);
       return false;
     }
   }

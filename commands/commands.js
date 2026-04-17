@@ -20,6 +20,10 @@ function registerCommands() {
       "time 时间，message 提醒消息，recipients 提醒人，手动at或QQ号；空格隔开；不填默认是自己",
     )
     .action(async (argv, time, message, recipients) => {
+      if(time == null || time.trim() === "") {
+        replyMessage(argv.session, "定时时间不能为空");
+        return;
+      }
       const privateMsg = isPrivateMessage(argv.session.event.channel.id);
       const taskTime = parseCountdownTextToDate(time);
       let taskRecipients;
@@ -34,6 +38,16 @@ function registerCommands() {
 
       if (taskTime <= new Date()) {
         replyMessage(argv.session, "时间必须是未来的时间，请检查后重新设置");
+        return;
+      }
+
+      if(taskTime > new Date('2099-12-31')) {
+        replyMessage(argv.session, "时间太远了，请设置在2099年12月31日之前");
+        return;
+      }
+
+      if(message == null || message.trim() === "") {
+        replyMessage(argv.session, "提醒消息不能为空");
         return;
       }
 
@@ -79,7 +93,7 @@ function registerCommands() {
         ) {
           replyMessage(
             argv.session,
-            `无法创建定时提醒，定时提醒总数量已达到上限：${store.config.totalQuantityLimit}条`,
+            `🚫无法创建定时提醒，定时提醒总数量已达到上限：${store.config.totalQuantityLimit}条`,
           );
           return;
         }
@@ -93,7 +107,7 @@ function registerCommands() {
         ) {
           replyMessage(
             argv.session,
-            `无法创建定时提醒，你创建的定时提醒数量已达到上限：${store.config.userQuantityLimit}条`,
+            `🚫无法创建定时提醒，你创建的定时提醒数量已达到上限：${store.config.userQuantityLimit}条`,
           );
           return;
         }
@@ -109,7 +123,7 @@ function registerCommands() {
       });
       replyMessage(
         argv.session,
-        `⏰定时设置成功，[${task.id}] ${dayjs(taskTime).format("YYYY-MM-DD HH:mm:ss")}将会提醒${
+        `✅定时设置成功\n[${task.id}] ${dayjs(taskTime).format("YYYY-MM-DD HH:mm:ss")}将会提醒${
           privateMsg
             ? "你"
             : guildRecipients.members
@@ -156,7 +170,7 @@ function registerCommands() {
           }
         }
         if (!store.config.allowQueryAll && listScope && listScope !== "self") {
-          replyMessage(argv.session, "插件设置不允许查询其他用户定时提醒列表");
+          replyMessage(argv.session, "🚫插件设置不允许查询其他用户定时提醒列表");
           return;
         }
 
@@ -194,13 +208,13 @@ function registerCommands() {
           : listScope === "all"
             ? "当前会话"
             : `[${listScope} ${guildMembers.filter((m) => m.user.id === listScope)?.[0].user.name ?? "未知"}]`
-      }设置的定时提醒有：\n`;
+      }设置的定时提醒有：\n<message forward><message>`;
       tasks.sort((a, b) => a.time.localeCompare(b.time));
       tasks.forEach((task) => {
-        msg += `⭐[${task.id}] ${task.time} 内容: ${task.message}${
+        msg += `⭐[${task.id}] ${task.time}\n💬 ${task.message}${
           privateMsg
             ? ""
-            : " 提醒人: " +
+            : "\n👤 " +
               task.recipients
                 .map((id) => {
                   const member = guildMembers?.find((m) => m.user.id === id);
@@ -209,6 +223,7 @@ function registerCommands() {
                 .join(",")
         }\n\n`;
       });
+      msg += "</message></message>";
       replyMessage(argv.session, msg);
     });
 

@@ -8,16 +8,20 @@ const name = "koishi-plugin-lollipop-clock";
 const inject = ["database"];
 
 const defaultConfig = {
+  adminList: [],
   enableRunMissedJob: false,
   allowQueryAll: false,
   allowSubscribeOthers: false,
   enableQuantityLimit: false,
   totalQuantityLimit: 5000,
-  userQuantityLimit: 50
+  userQuantityLimit: 50,
 };
 
 const Config = Schema.intersect([
   Schema.object({
+    adminList: Schema.array(String)
+      .default(defaultConfig.adminList)
+      .description("管理员QQ号列表"),
     enableRunMissedJob: Schema.boolean()
       .default(defaultConfig.enableRunMissedJob)
       .description("启动后已错过的定时提醒是否执行"),
@@ -26,7 +30,7 @@ const Config = Schema.intersect([
       .description("允许查看当前会话其他用户的定时列表"),
     allowSubscribeOthers: Schema.boolean()
       .default(defaultConfig.allowSubscribeOthers)
-      .description("允许订阅当前会话下其他人的定时提醒")
+      .description("允许订阅当前会话下其他人的定时提醒"),
   }).description("基础配置"),
   Schema.object({
     enableQuantityLimit: Schema.boolean()

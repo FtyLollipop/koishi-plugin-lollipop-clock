@@ -8,11 +8,10 @@ class ScheduleManager {
   constructor(db) {
     this.#tasks = new Map();
     this.#db = db;
-
-    // 从数据库加载任务
     this.loadTasksFromDatabase();
   }
 
+  // 从数据库加载任务
   async loadTasksFromDatabase() {
     const tasksData = await this.#db.getTasks();
     if (tasksData.length === 0) return;
@@ -23,6 +22,7 @@ class ScheduleManager {
           this.removeTask(id);
         },
       });
+      // 如果启用了错过执行补偿，并且任务时间已经过去了，那么立即执行任务并删除
       if (store.config.enableMissedRun) {
         const now = new Date();
         const taskTime = new Date(taskData.time);
@@ -39,8 +39,10 @@ class ScheduleManager {
       this.#tasks.set(task.id, task);
       task.start();
     });
+    store.ctx.logger.info(`已从数据库加载 ${tasksData.length} 个定时任务`);
   }
 
+  // 添加
   async addTask({
     id,
     platform,
@@ -69,6 +71,7 @@ class ScheduleManager {
     return task;
   }
 
+  // 订阅
   async subscribeTask(taskId, userId) {
     const task = this.getTaskById(taskId)
     task.stop()
@@ -77,6 +80,7 @@ class ScheduleManager {
     task.start()
   }
 
+  // 取消订阅
   async unsubscribeTask(taskId, userId) {
     const task = this.getTaskById(taskId)
     task.stop()
@@ -85,16 +89,22 @@ class ScheduleManager {
     task.start()
   }
 
+  // 删除
   removeTask(taskId) {
-    this.getTaskById(taskId)?.stop();
+    if(taskId == undefined) return;
+    const task = this.getTaskById(taskId);
+    if(!task) return;
+    task.stop();
     this.#tasks.delete(taskId);
     this.#db.deleteTaskById(taskId);
   }
 
+  // 通过ID获取
   getTaskById(taskId) {
     return this.#tasks.get(taskId);
   }
 
+  // 获取列表
   getTasks(platform, channelId, userId) {
     let tasks = Array.from(this.#tasks.values());
     if (platform) {
