@@ -20,7 +20,7 @@ function registerCommands() {
       "time 时间，message 提醒消息，recipients 提醒人，手动at或QQ号；空格隔开；不填默认是自己",
     )
     .action(async (argv, time, message, recipients) => {
-      if(time == null || time.trim() === "") {
+      if (time == null || time.trim() === "") {
         replyMessage(argv.session, "定时时间不能为空");
         return;
       }
@@ -41,12 +41,12 @@ function registerCommands() {
         return;
       }
 
-      if(taskTime > new Date('2099-12-31')) {
+      if (taskTime > new Date("2099-12-31")) {
         replyMessage(argv.session, "时间太远了，请设置在2099年12月31日之前");
         return;
       }
 
-      if(message == null || message.trim() === "") {
+      if (message == null || message.trim() === "") {
         replyMessage(argv.session, "提醒消息不能为空");
         return;
       }
@@ -141,12 +141,15 @@ function registerCommands() {
       "clock.list [scope:string]",
       "提醒时间升序列出当前会话下自己的所有定时提醒",
     )
-    .usage("查看列表范围，可选值为：self自己；all当前会话下全部；QQ号；手动at")
+    .usage(
+      "scope 查看列表范围，可选值为：self自己；all当前会话下全部；QQ号；手动at",
+    )
     .action(async (argv, scope) => {
       const privateMsg = isPrivateMessage(argv.session.event.channel.id);
 
       let listScope = "self";
       let guildMembers;
+      let scopeUser;
       // 如果是群聊
       if (!privateMsg) {
         // 解析列表范围选项参数
@@ -155,8 +158,8 @@ function registerCommands() {
         } else if (scope === "self" || scope === "all") {
           listScope = scope;
         } else {
-          listScope = parseRecipients(scope);
-          if (!listScope) {
+          const scopeIdList = parseRecipients(scope);
+          if (!scopeIdList) {
             replyMessage(
               argv.session,
               "参数格式错误，列表范围应该只包含self；all；手动at或QQ号",
@@ -164,13 +167,16 @@ function registerCommands() {
             return;
           } else {
             listScope =
-              listScope[0] === argv.session.event.user.id
+              scopeIdList[0] === argv.session.event.user.id
                 ? "self"
-                : listScope[0];
+                : scopeIdList[0];
           }
         }
         if (!store.config.allowQueryAll && listScope && listScope !== "self") {
-          replyMessage(argv.session, "🚫插件设置不允许查询其他用户定时提醒列表");
+          replyMessage(
+            argv.session,
+            "🚫插件设置不允许查询其他用户定时提醒列表",
+          );
           return;
         }
 
@@ -178,6 +184,15 @@ function registerCommands() {
           argv.session.event.platform,
           argv.session.event.channel.id,
         );
+        scopeUser = guildMembers.filter((m) => m.user.id === listScope);
+
+        if (listScope !== "self" && listScope !== "all") {
+          // 验证指定用户是否在群聊中
+          if (scopeUser.length === 0) {
+            replyMessage(argv.session, "参数错误，指定的用户不在当前群聊中");
+            return;
+          }
+        }
       }
 
       const tasks = await store.scheduleManager.getTasks(
@@ -197,7 +212,7 @@ function registerCommands() {
               ? "你"
               : listScope === "all"
                 ? "当前会话"
-                : `[${listScope} ${guildMembers.filter((m) => m.user.id === listScope)?.[0].user.name ?? "未知"}]`
+                : `[${listScope} ${scopeUser[0]?.user?.name ?? "未知"}]`
           }没有设置任何定时提醒`,
         );
         return;
@@ -207,7 +222,7 @@ function registerCommands() {
           ? "你"
           : listScope === "all"
             ? "当前会话"
-            : `[${listScope} ${guildMembers.filter((m) => m.user.id === listScope)?.[0].user.name ?? "未知"}]`
+            : `[${listScope} ${scopeUser[0]?.user?.name ?? "未知"}]`
       }设置的定时提醒有：\n<message forward><message>`;
       tasks.sort((a, b) => a.time.localeCompare(b.time));
       tasks.forEach((task) => {
@@ -302,7 +317,14 @@ function registerCommands() {
         replyMessage(argv.session, "未找到该定时提醒");
         return;
       }
-      if (task.userId !== argv.session.event.user.id) {
+
+      if (
+        task.userId !== argv.session.event.user.id &&
+        !store.config.superAdminList.includes(argv.session.event.user.id) &&
+        store.config.enableGroupAdmin &&
+        (argv.session.event.member?.roles?.includes("owner") ||
+          argv.session.event.member?.roles?.includes("admin"))
+      ) {
         replyMessage(argv.session, "你没有权限取消该定时提醒");
         return;
       }
@@ -310,24 +332,100 @@ function registerCommands() {
       replyMessage(argv.session, "定时提醒取消成功");
     });
 
-  // 取消所有提醒
+  // 清楚所有提醒
   store.ctx
-    .command("clock.clear", "清除所有定时提醒")
-    .usage("只会清除当前会话的定时提醒")
-    .action(async (argv) => {
+    .command("clock.clear [scope:string]", "清除所有定时提醒")
+    .usage(
+      "只会清除当前会话的定时提醒。scope 清除范围，可选值为：self自己；all当前会话下全部；QQ号；手动at",
+    )
+    .action(async (argv, scope) => {
+      const privateMsg = isPrivateMessage(argv.session.event.channel.id);
+
+      let clearScope = "self";
+      let scopeUser;
+      // 如果是群聊
+      if (!privateMsg) {
+        // 解析列表范围选项参数
+        if (!scope) {
+          clearScope = "self";
+        } else if (scope === "self" || scope === "all") {
+          clearScope = scope;
+        } else {
+          const scopeIdList = parseRecipients(scope);
+          if (!scopeIdList) {
+            replyMessage(
+              argv.session,
+              "参数格式错误，清除范围应该只包含self；all；手动at或QQ号",
+            );
+            return;
+          } else {
+            clearScope =
+              scopeIdList[0] === argv.session.event.user.id
+                ? "self"
+                : scopeIdList[0];
+          }
+        }
+
+        if (
+          !store.config.superAdminList.includes(argv.session.event.user.id) &&
+          store.config.enableGroupAdmin &&
+          (argv.session.event.member?.roles?.includes("owner") ||
+            argv.session.event.member?.roles?.includes("admin"))
+        ) {
+          replyMessage(argv.session, "你没有权限清除该范围内的定时提醒");
+          return;
+        }
+
+        if (clearScope !== "self" && clearScope !== "all") {
+          // 验证指定用户是否在群聊中
+          const guildMembers = await getGuildMemberList(
+            argv.session.event.platform,
+            argv.session.event.channel.id,
+          );
+
+          scopeUser = guildMembers.filter((m) => m.user.id === clearScope);
+          if (scopeUser.length === 0) {
+            replyMessage(argv.session, "参数错误，指定的用户不在当前群聊中");
+            return;
+          }
+        }
+      }
+
       const tasks = await store.scheduleManager.getTasks(
         argv.session.event.platform,
         argv.session.event.channel.id,
-        argv.session.event.user.id,
+        clearScope === "self"
+          ? argv.session.event.user.id
+          : clearScope === "all"
+            ? undefined
+            : clearScope,
       );
       if (tasks.length === 0) {
-        replyMessage(argv.session, "你没有设置任何定时提醒");
+        replyMessage(
+          argv.session,
+          `${
+            clearScope === "self"
+              ? "你"
+              : clearScope === "all"
+                ? "所有用户"
+                : `[${clearScope} ${scopeUser[0]?.user?.name ?? "未知"}]`
+          }没有设置任何定时提醒`,
+        );
         return;
       }
       tasks.forEach((task) => {
         store.scheduleManager.removeTask(task.id);
       });
-      replyMessage(argv.session, "所有定时提醒已清除");
+      replyMessage(
+        argv.session,
+        `${
+          clearScope === "self"
+            ? "你"
+            : clearScope === "all"
+              ? "所有用户"
+              : `[${clearScope} ${scopeUser[0]?.user?.name ?? "未知"}]`
+        }的定时提醒已清除`,
+      );
     });
 }
 

@@ -8,7 +8,8 @@ const name = "koishi-plugin-lollipop-clock";
 const inject = ["database"];
 
 const defaultConfig = {
-  adminList: [],
+  superAdminList: [],
+  enableGroupAdmin: false,
   enableRunMissedJob: false,
   allowQueryAll: false,
   allowSubscribeOthers: false,
@@ -19,9 +20,12 @@ const defaultConfig = {
 
 const Config = Schema.intersect([
   Schema.object({
-    adminList: Schema.array(String)
-      .default(defaultConfig.adminList)
-      .description("管理员QQ号列表"),
+    superAdminList: Schema.array(String)
+      .default(defaultConfig.superAdminList)
+      .description("超级管理员QQ号列表"),
+    enableGroupAdmin: Schema.boolean()
+      .default(defaultConfig.enableGroupAdmin)
+      .description("是否允许群主和管理员管理群内定时"),
     enableRunMissedJob: Schema.boolean()
       .default(defaultConfig.enableRunMissedJob)
       .description("启动后已错过的定时提醒是否执行"),
